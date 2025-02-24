@@ -128,7 +128,7 @@ PROCESS_THREAD(clicker_ng_process, ev, data) {
 
                     // REMOVE EVENT IN HISTORY
                     remove_event_from_history(j);
-                    printf("Event successfully removed\n")
+                    printf("Event successfully removed\n");
                     // leds_off(LEDS_RED); // Optionally turn off the LED
                 }
             }
