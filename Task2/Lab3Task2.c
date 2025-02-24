@@ -30,8 +30,10 @@ PROCESS_THREAD(node_process, ev, data)
 
   if(is_coordinator) {
     NETSTACK_ROUTING.root_start();
+    LOG_INFO("Root node started RPL process.\n");
   }
   NETSTACK_MAC.on();
+
 
   {
     static struct etimer et;
@@ -39,15 +41,57 @@ PROCESS_THREAD(node_process, ev, data)
     etimer_set(&et, CLOCK_SECOND * 10);
     while(1) {
         LOG_INFO("Routing entries: %u\n", uip_ds6_route_num_routes());
-        uip_ds6_route_t *route = uip_ds6_route_head();
-      	while(route) {
-		LOG_INFO("Route ");
-		LOG_INFO_6ADDR(&route->ipaddr);
-		LOG_INFO_(" via ");
-		LOG_INFO_6ADDR(uip_ds6_route_nexthop(route));
-		LOG_INFO_("\n");
-		route = uip_ds6_route_next(route);
-	}
+
+        if(uip_ds6_route_num_routes() > 0){
+          // Intermediate or root
+          if(node_id == 1)
+          {
+            // ROOT node
+            printf("I AM ROOT (%i)!\n", node_id);
+            leds_on(LEDS_GREEN);
+            leds_off(LEDS_YELLOW);
+            leds_off(LEDS_RED);
+
+          }
+
+          else{
+            // Intermediate Node
+            printf("INTERMEDIATE NODE (%i)!\n", node_id);
+            leds_on(LEDS_YELLOW);
+            leds_off(LEDS_GREEN);
+            leds_off(LEDS_RED);
+          }
+        }
+        else {
+          // Node is either leaf or not in network
+
+          // If reachable --> leafnode
+          if(NETSTACK_ROUTING.node_is_reachable() && node_id != 1)
+          {
+            leds_on(LEDS_RED);
+            leds_off(LEDS_GREEN);
+            leds_off(LEDS_YELLOW);
+          }
+          else
+          {
+            leds_off(LEDS_RED);
+            leds_off(LEDS_GREEN);
+            leds_off(LEDS_YELLOW);
+          }
+        }
+        
+
+        uip_ds6_route_t *route = uip_ds6_route_head();  
+        while(route) 
+        {
+          LOG_INFO("Route ");
+          LOG_INFO_6ADDR(&route->ipaddr);
+          LOG_INFO_(" via ");
+          LOG_INFO_6ADDR(uip_ds6_route_nexthop(route));
+          LOG_INFO_("\n");
+          route = uip_ds6_route_next(route);
+	      }
+
       	PROCESS_YIELD_UNTIL(etimer_expired(&et));
       	etimer_reset(&et);
     }
@@ -55,3 +99,4 @@ PROCESS_THREAD(node_process, ev, data)
 
   PROCESS_END();
 }
+
