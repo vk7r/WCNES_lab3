@@ -15,7 +15,7 @@ struct Event {
 #define MAX_NUMBER_OF_EVENTS 3
 struct Event event_history[MAX_NUMBER_OF_EVENTS];
 
-#define ALARM_TIMEOUT 10  // 10 seconds timeout, CLOCK_SECOND not needed due to time being converted before
+#define ALARM_TIMEOUT 30  // 10 seconds timeout, CLOCK_SECOND not needed due to time being converted before
 
 PROCESS(clicker_ng_process, "Clicker NG Process");
 AUTOSTART_PROCESSES(&clicker_ng_process);
@@ -38,6 +38,8 @@ void add_event_to_history(const linkaddr_t *addr, int index){
     }
 }
 
+/*---------------------------------------------------------------------------*/
+
 void remove_event_from_history(int index)
 {
   event_history[index].id = 0;
@@ -45,11 +47,26 @@ void remove_event_from_history(int index)
   linkaddr_copy(&event_history[index].addr, &linkaddr_null);
 }
 
+
 /*---------------------------------------------------------------------------*/
-static void recv(const void *data, uint16_t len, const linkaddr_t *src, const linkaddr_t *dest) {
-    printf("Received: %s - from %d\n", (char*) data, src->u8[0]);
-    leds_toggle(LEDS_GREEN);
+int find_oldest_index() {
+    
+    int oldest_time = event_history[0].time; // sets it to the first index for reference
+    int oldest_index = 0; // Start from the first index (we assume there is at least one event)
+
+    int i;
+    for (i = 1; i < MAX_NUMBER_OF_EVENTS; i++) { // Start from index 1 since we've already considered index 0
+        if (event_history[i].time < oldest_time && event_history[i].time != 0) { // Look for the smallest non-zero time
+            oldest_time = event_history[i].time;
+            oldest_index = i;
+        }
+    }
+
+    return oldest_index;
 }
+
+
+/*---------------------------------------------------------------------------*/
 
 /*
 Updates the event history and checks if an alarm should be triggered.
@@ -57,19 +74,62 @@ Called when a broadcast packet is received, or when the button on
 the local node is clicked.
 */
 void handle_event(const linkaddr_t *src) {
-    printf("IN HANDLE EVENT!\n");
+    // printf("IN HANDLE EVENT!\n");
 
+    int event_added = 0;
     int i;
     for(i = 0; i < MAX_NUMBER_OF_EVENTS; i++) {
         if(linkaddr_cmp(src, &event_history[i].addr) || event_history[i].time == 0) {
             add_event_to_history(src, i);
-            printf("OWN EVENT ADDED TO HISTORY\n");
+            // printf("OWN EVENT ADDED TO HISTORY\n");
+            event_added = 1;
             break;
         }
+
+        
+    }
+    
+    // If no event was added
+    if(!event_added)
+    {
+        // If history is full & the signal is from a new node
+        int oldest_index = find_oldest_index();
+        if(oldest_index != -1){
+            add_event_to_history(src, oldest_index);
+        }
+        event_added = 1;
+    }
+
+
+    // Check if 3 events has occured
+    int j;
+    int count = 0;
+    for(j=0; j<MAX_NUMBER_OF_EVENTS;j++){
+        if(event_history[j].time != 0){
+            count++;
+        }
+    }
+
+    if(count == 3)
+    {
+        printf("3 EVENTS ACTIVE --> TURNING ON RED LED\n");
+        leds_on(LEDS_RED);
     }
 
     print_event_structure(event_history);
 }
+
+
+/*---------------------------------------------------------------------------*/
+
+static void recv(const void *data, uint16_t len, const linkaddr_t *src, const linkaddr_t *dest) {
+    printf("Received: %s - from %d\n", (char*) data, src->u8[0]);
+    // leds_toggle(LEDS_GREEN);
+
+    // printf("handling package event...\n");
+    handle_event(src);
+}
+
 
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(clicker_ng_process, ev, data) {
@@ -93,7 +153,7 @@ PROCESS_THREAD(clicker_ng_process, ev, data) {
     /* Activate the button sensor. */
     SENSORS_ACTIVATE(button_sensor);
 
-    // Set the timer to check for timeouts every 5 seconds
+    // Set the timer to check for timeouts every second
     etimer_set(&timeout_timer, 1 * CLOCK_SECOND);
 
     while(1) {
@@ -101,9 +161,9 @@ PROCESS_THREAD(clicker_ng_process, ev, data) {
 
         // Check if the button sensor is pressed
         if (ev == sensors_event && data == &button_sensor) {
-            // BROADCAST PACKAGE RECEIVED or BUTTON CLICKED!
+            // Button pressed
             handle_event(&linkaddr_node_addr);
-            leds_toggle(LEDS_RED);
+            // leds_toggle(LEDS_RED);
 
             memcpy(nullnet_buf, &payload, sizeof(payload));
             nullnet_len = sizeof(payload);
@@ -119,17 +179,16 @@ PROCESS_THREAD(clicker_ng_process, ev, data) {
             // Check for events that have timed out
             int j;
             for(j = 0; j < MAX_NUMBER_OF_EVENTS; j++) {
-                // printf("TIME IN EVENT: %lu\n", (unsigned long)(event_history[j].time));
-                printf("TIME DIFF: %lu,  TIMEOUT TIME: %i\n", (current_time - event_history[j].time), ALARM_TIMEOUT);
-                // printf("TIMOUT TIME: %lu\n", ALARM_TIMEOUT);
+
+                // If the event exists and it has timed out
                 if (event_history[j].time != 0 && (current_time - event_history[j].time) >= ALARM_TIMEOUT) {
-                    // If event time exceeds ALARM_TIMEOUT, turn off the LED
                     printf("WE HAVE TIMEOUT for event %d\n", j);
+
 
                     // REMOVE EVENT IN HISTORY
                     remove_event_from_history(j);
-                    printf("Event successfully removed\n");
-                    // leds_off(LEDS_RED); // Optionally turn off the LED
+                    // printf("Event successfully removed\n");
+                    leds_off(LEDS_RED); // Turn off Alarm-LED
                 }
             }
 
@@ -140,3 +199,7 @@ PROCESS_THREAD(clicker_ng_process, ev, data) {
 
     PROCESS_END();
 }
+
+// printf("TIME IN EVENT: %lu\n", (unsigned long)(event_history[j].time));
+// printf("TIME DIFF: %lu,  TIMEOUT TIME: %i\n", (current_time - event_history[j].time), ALARM_TIMEOUT);
+// printf("TIMOUT TIME: %lu\n", ALARM_TIMEOUT);
