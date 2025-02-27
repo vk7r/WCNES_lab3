@@ -15,7 +15,7 @@ struct Event {
 #define MAX_NUMBER_OF_EVENTS 3
 struct Event event_history[MAX_NUMBER_OF_EVENTS];
 
-#define ALARM_TIMEOUT 30  // 10 seconds timeout, CLOCK_SECOND not needed due to time being converted before
+#define ALARM_TIMEOUT 30  // 30 seconds timeout, CLOCK_SECOND not needed due to time being converted before
 
 PROCESS(clicker_ng_process, "Clicker NG Process");
 AUTOSTART_PROCESSES(&clicker_ng_process);
@@ -68,11 +68,7 @@ int find_oldest_index() {
 
 /*---------------------------------------------------------------------------*/
 
-/*
-Updates the event history and checks if an alarm should be triggered.
-Called when a broadcast packet is received, or when the button on
-the local node is clicked.
-*/
+
 void handle_event(const linkaddr_t *src) {
     // printf("IN HANDLE EVENT!\n");
 
